@@ -16,13 +16,16 @@ Options:
   -e VAR=val, --env       Set/override a variable (repeatable)
       --env-file PATH     Load variables from an env file (repeatable)"
 
-ENV_HELP="Variables:
-  RESTORE_SITE            required  target site on this bench
-  RESTORE_SOURCE_URL      required  source site base URL
-  RESTORE_SOURCE_TOKEN    required  Authorization header value
-  DB_ROOT_USER            required  database root user
-  DB_ROOT_PASS            required  database root password (alias: DB_PASSWORD)
-  RESTORE_ADMIN_PASSWORD  required  admin password to set after restore
+ENV_HELP="Anything required and unset is asked for on the terminal, so no env file is
+needed. Passwords are read without echo.
+
+Variables:
+  RESTORE_SITE            asked; auto-picked when the bench has one site
+  RESTORE_SOURCE_URL      asked
+  RESTORE_SOURCE_TOKEN    asked  Authorization header value
+  DB_ROOT_USER            asked  default: root
+  DB_ROOT_PASS            asked  database root password (alias: DB_PASSWORD)
+  RESTORE_ADMIN_PASSWORD  asked  admin password to set after restore
   RESTORE_DOWNLOAD_DIR    default: \$PWD
   RESTORE_SITES_DIR       default: sites
   RESTORE_CONNECTIONS     default: 4        aria2c -x/-s; ignored by the curl fallback
@@ -31,26 +34,29 @@ ENV_HELP="Variables:
 
 parse_args "$@"
 
-: "${RESTORE_SITE:?RESTORE_SITE is required}"
-: "${RESTORE_SOURCE_URL:?RESTORE_SOURCE_URL is required}"
-: "${RESTORE_SOURCE_TOKEN:?RESTORE_SOURCE_TOKEN is required}"
 # DB_ROOT_PASS is the shared name (bench-init.sh uses it too); DB_PASSWORD is
 # kept as an alias so older env files keep working.
 DB_ROOT_PASS="${DB_ROOT_PASS:-${DB_PASSWORD:-}}"
-: "${DB_ROOT_USER:?DB_ROOT_USER is required}"
-: "${DB_ROOT_PASS:?DB_ROOT_PASS (or DB_PASSWORD) is required}"
-: "${RESTORE_ADMIN_PASSWORD:?RESTORE_ADMIN_PASSWORD is required}"
 
-SOURCE_URL="${RESTORE_SOURCE_URL%/}"
-DOWNLOAD_DIR="${RESTORE_DOWNLOAD_DIR:-$PWD}"
 SITES_DIR="${RESTORE_SITES_DIR:-sites}"
 require_bench_dir "${SITES_DIR}"
-CONNECTIONS="${RESTORE_CONNECTIONS:-4}"
-AUTH="Authorization: ${RESTORE_SOURCE_TOKEN}"
 
 for dep in curl jq; do
     command -v "$dep" >/dev/null 2>&1 || die "[restore] missing dependency: ${dep}"
 done
+
+# anything still unset is asked for, so this runs fine with no env file
+pick_site   RESTORE_SITE "${SITES_DIR}"
+ask_var     RESTORE_SOURCE_URL     "Source site URL (https://...)"
+ask_secret  RESTORE_SOURCE_TOKEN   "Source Authorization header (e.g. 'token key:secret')"
+ask_var     DB_ROOT_USER           "Database root user" root
+ask_secret  DB_ROOT_PASS           "Database root password"
+ask_secret  RESTORE_ADMIN_PASSWORD "Admin password to set after restore"
+
+SOURCE_URL="${RESTORE_SOURCE_URL%/}"
+DOWNLOAD_DIR="${RESTORE_DOWNLOAD_DIR:-$PWD}"
+CONNECTIONS="${RESTORE_CONNECTIONS:-4}"
+AUTH="Authorization: ${RESTORE_SOURCE_TOKEN}"
 
 echo "[restore] Checking site: ${RESTORE_SITE}"
 

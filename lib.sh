@@ -46,6 +46,49 @@ require_bench_dir() {
     [[ -d "$sites" ]] || die "not a bench directory: ${PWD} (no '${sites}/'). cd into your bench first."
 }
 
+# Interactive fallbacks, so every command works with no env file at all.
+# All three no-op when the variable is already set, so -e / --env-file win.
+
+ask_var() {   # ask_var VAR "Prompt" [default]
+    local var="$1" prompt="$2" default="${3:-}" answer=""
+    [[ -n "${!var:-}" ]] && return 0
+    if [[ ! -t 0 ]]; then
+        [[ -n "$default" ]] || die "${var} is required (no terminal to ask on; pass -e ${var}=... or --env-file)"
+        printf -v "$var" '%s' "$default"
+        return 0
+    fi
+    read -rp "${prompt}${default:+ [${default}]}: " answer || true
+    printf -v "$var" '%s' "${answer:-$default}"
+    [[ -n "${!var}" ]] || die "${var} is required"
+}
+
+ask_secret() {   # ask_secret VAR "Prompt" — never echoed, never defaulted
+    local var="$1" prompt="$2" answer=""
+    [[ -n "${!var:-}" ]] && return 0
+    [[ -t 0 ]] || die "${var} is required (no terminal to ask on; pass -e ${var}=... or --env-file)"
+    read -rsp "${prompt}: " answer || true
+    echo
+    [[ -n "$answer" ]] || die "${var} is required"
+    printf -v "$var" '%s' "$answer"
+}
+
+pick_site() {   # pick_site VAR [sites_dir] — auto-picks when the bench has one site
+    local var="$1" dir="${2:-sites}" sites=() s
+    [[ -n "${!var:-}" ]] && return 0
+    mapfile -t sites < <(for f in "${dir}"/*/site_config.json; do [[ -f "$f" ]] && basename "$(dirname "$f")"; done)
+    [[ ${#sites[@]} -eq 0 ]] && die "no site found in ${dir}/"
+    if [[ ${#sites[@]} -eq 1 ]]; then
+        printf -v "$var" '%s' "${sites[0]}"
+        echo "Site: ${!var}"
+        return 0
+    fi
+    [[ -t 0 ]] || die "${var} is required (${#sites[@]} sites here, no terminal to ask on)"
+    PS3="Pick site: "
+    select s in "${sites[@]}"; do
+        [[ -n "$s" ]] && { printf -v "$var" '%s' "$s"; return 0; }
+    done
+}
+
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in

@@ -39,37 +39,14 @@ parse_args "$@"
 SITES_DIR="${USER_SITES_DIR:-sites}"
 require_bench_dir "${SITES_DIR}"
 
-ask_or_die() {   # ask_or_die VAR "prompt" [default]
-    local var="$1" prompt="$2" default="${3:-}" answer=""
-    [[ -n "${!var:-}" ]] && return 0
-    if [[ ! -t 0 ]]; then
-        [[ -n "$default" ]] || die "${var} is required (no tty to ask on)"
-        printf -v "$var" '%s' "$default"
-        return 0
-    fi
-    read -rp "${prompt}${default:+ [${default}]}: " answer || true
-    printf -v "$var" '%s' "${answer:-$default}"
-}
-
-if [ -z "${USER_SITE:-}" ]; then
-    mapfile -t SITES < <(for f in "${SITES_DIR}"/*/site_config.json; do [ -f "$f" ] && basename "$(dirname "$f")"; done)
-    [ ${#SITES[@]} -eq 0 ] && die "No site found in ${SITES_DIR}/"
-
-    if [ ${#SITES[@]} -eq 1 ]; then
-        USER_SITE="${SITES[0]}"
-    else
-        [[ -t 0 ]] || die "USER_SITE is required (multiple sites, no tty to ask on)"
-        PS3="Pick site: "
-        select USER_SITE in "${SITES[@]}"; do [ -n "$USER_SITE" ] && break; done
-    fi
-fi
+pick_site USER_SITE "${SITES_DIR}"
 
 [ -f "${SITES_DIR}/${USER_SITE}/site_config.json" ] || die "Site ${USER_SITE} does not exist under ${SITES_DIR}/"
 
-ask_or_die USER_EMAIL "User email"
+ask_var USER_EMAIL "User email"
 [[ "${USER_EMAIL}" == *@*.* ]] || die "not an email address: ${USER_EMAIL}"
 
-ask_or_die USER_FIRST_NAME "First name" "${USER_EMAIL%%@*}"
+ask_var USER_FIRST_NAME "First name" "${USER_EMAIL%%@*}"
 [ -n "${USER_FIRST_NAME}" ] || die "USER_FIRST_NAME is required"
 
 export USER_EMAIL USER_FIRST_NAME

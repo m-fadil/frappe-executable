@@ -17,7 +17,8 @@ Options:
       --env-file PATH     Load variables from an env file (repeatable)"
 
 ENV_HELP="Variables:
-  SANITIZE_SITE           required  falls back to RESTORE_SITE
+  SANITIZE_SITE           asked; falls back to RESTORE_SITE, auto-picked when
+                          the bench has one site
   SANITIZE_SINGLES        comma-separated single doctypes to disable
                           default: FCM Settings,TP Twilio Settings,TP Exotel Settings
                           set to empty to skip
@@ -32,7 +33,7 @@ SITES_DIR="${SANITIZE_SITES_DIR:-sites}"
 require_bench_dir "${SITES_DIR}"
 MUTE_EMAILS="${SANITIZE_MUTE_EMAILS:-1}"
 
-: "${SANITIZE_SITE:?SANITIZE_SITE or RESTORE_SITE is required}"
+pick_site SANITIZE_SITE "${SITES_DIR}"
 
 echo "[sanitize] Checking site: ${SANITIZE_SITE}"
 

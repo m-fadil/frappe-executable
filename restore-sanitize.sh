@@ -16,11 +16,17 @@ Options:
   -e VAR=val, --env       Set/override a variable (repeatable)
       --env-file PATH     Load variables from an env file (repeatable)"
 
-ENV_HELP="Options and env files are forwarded verbatim to both scripts.
+ENV_HELP="No env file is required: anything missing is asked for on the terminal.
+Options and env files are forwarded verbatim to both scripts.
 See './restore.sh --help' and './sanitize.sh --help' for the variables."
 
 # validate/expose here, then hand the same args to each step
 parse_args "$@"
+
+# ask for the site once here; both children inherit it and skip their own prompt
+require_bench_dir "${RESTORE_SITES_DIR:-sites}"
+pick_site RESTORE_SITE "${RESTORE_SITES_DIR:-sites}"
+export RESTORE_SITE
 
 echo "========================================"
 echo " RESTORE"

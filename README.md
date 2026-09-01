@@ -160,6 +160,41 @@ instead of silently creating a user with no permissions. An existing user is
 reused untouched — only the API credentials are fetched or generated. The
 credentials are the last line of output, so `| tail -1` works.
 
+## No env file needed
+
+Every command runs with nothing configured — anything required that is unset is
+asked for on the terminal, and passwords are read without echo:
+
+```
+$ cd ~/frappe-bench && frappe restore
+Site: dev.localhost                                    # auto-picked, one site here
+Source site URL (https://...): https://prod.example.com
+Source Authorization header (e.g. 'token key:secret'):
+Database root user [root]:
+Database root password:
+Admin password to set after restore:
+[restore] Checking site: dev.localhost
+```
+
+A bench with several sites gives you a numbered picker instead. `bench-init`
+goes further and opens a TUI where every field is editable before anything
+runs.
+
+Prompts only fire for what is still unset, so an env file, `-e`, and typing are
+freely mixable — handy for keeping the boring parts in a file and typing only
+the password:
+
+```bash
+frappe restore prod.env          # everything but the passwords in the file
+```
+
+With no terminal to ask on (cron, CI) it fails fast and names the variable
+rather than hanging:
+
+```
+RESTORE_SITE is required (2 sites here, no terminal to ask on)
+```
+
 ## Options, everywhere
 
 Same three on every command:
