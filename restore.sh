@@ -25,7 +25,7 @@ ENV_HELP="Variables:
   RESTORE_ADMIN_PASSWORD  required  admin password to set after restore
   RESTORE_DOWNLOAD_DIR    default: \$PWD
   RESTORE_SITES_DIR       default: sites
-  RESTORE_CONNECTIONS     default: 4        aria2c -x/-s
+  RESTORE_CONNECTIONS     default: 4        aria2c -x/-s; ignored by the curl fallback
   RESTORE_KEEP_BACKUP     default: 1        set to 0 to delete after restore
   RESTORE_SKIP_MIGRATE    default: empty    non-empty skips 'bench migrate'"
 
@@ -47,6 +47,10 @@ SITES_DIR="${RESTORE_SITES_DIR:-sites}"
 require_bench_dir "${SITES_DIR}"
 CONNECTIONS="${RESTORE_CONNECTIONS:-4}"
 AUTH="Authorization: ${RESTORE_SOURCE_TOKEN}"
+
+for dep in curl jq; do
+    command -v "$dep" >/dev/null 2>&1 || die "[restore] missing dependency: ${dep}"
+done
 
 echo "[restore] Checking site: ${RESTORE_SITE}"
 
@@ -74,6 +78,7 @@ fi
 
 BACKUP_FILE="$(basename "${DB_PATH}")"
 BACKUP_PATH="${DOWNLOAD_DIR}/${BACKUP_FILE}"
+BACKUP_URL="${SOURCE_URL}/backups/${BACKUP_FILE}"
 
 echo "[restore] Latest database backup: ${BACKUP_FILE}"
 
@@ -87,27 +92,58 @@ if [[ -f "${BACKUP_PATH}" && ! -f "${BACKUP_PATH}.aria2" ]]; then
     fi
 fi
 
-if [[ -z "${SKIP_DOWNLOAD:-}" ]]; then
-    echo "[restore] Downloading backup into ${DOWNLOAD_DIR}"
+download() {
+    local rc=0
 
-    # exit 13 = file already fully downloaded, treat as success
-    RC=0
-    aria2c \
-        --no-conf \
-        -x "${CONNECTIONS}" \
-        -s "${CONNECTIONS}" \
-        -c \
-        --auto-file-renaming=false \
-        --allow-overwrite=false \
-        --header="${AUTH}" \
-        -d "${DOWNLOAD_DIR}" \
-        -o "${BACKUP_FILE}" \
-        "${SOURCE_URL}/backups/${BACKUP_FILE}" || RC=$?
+    if command -v aria2c >/dev/null 2>&1; then
+        echo "[restore] Downloading with aria2c (${CONNECTIONS} connections) into ${DOWNLOAD_DIR}"
 
-    if [[ ${RC} -ne 0 && ${RC} -ne 13 ]]; then
-        echo "[restore] aria2c failed (exit ${RC})"
-        exit "${RC}"
+        # exit 13 = file already fully downloaded, treat as success
+        aria2c \
+            --no-conf \
+            -x "${CONNECTIONS}" \
+            -s "${CONNECTIONS}" \
+            -c \
+            --auto-file-renaming=false \
+            --allow-overwrite=false \
+            --header="${AUTH}" \
+            -d "${DOWNLOAD_DIR}" \
+            -o "${BACKUP_FILE}" \
+            "${BACKUP_URL}" || rc=$?
+
+        [[ ${rc} -eq 0 || ${rc} -eq 13 ]] && return 0
+        echo "[restore] aria2c failed (exit ${rc})"
+        return "${rc}"
     fi
+
+    echo "[restore] aria2c not found, falling back to curl (single connection) into ${DOWNLOAD_DIR}"
+
+    # download to .part so an interrupted run is resumable: a bare partial file
+    # is indistinguishable from a corrupt complete one, and gets deleted above
+    local part="${BACKUP_PATH}.part"
+    [[ -f "${part}" ]] && echo "[restore] resuming from $(wc -c <"${part}") bytes"
+
+    curl -fL --retry 3 -C - -H "${AUTH}" -o "${part}" "${BACKUP_URL}" || rc=$?
+
+    # 33 = source refuses byte ranges, so resuming is impossible; start clean
+    if [[ ${rc} -eq 33 ]]; then
+        echo "[restore] source does not support resume, restarting the download"
+        rm -f "${part}"
+        rc=0
+        curl -fL --retry 3 -H "${AUTH}" -o "${part}" "${BACKUP_URL}" || rc=$?
+    fi
+
+    if [[ ${rc} -ne 0 ]]; then
+        echo "[restore] curl failed (exit ${rc})"
+        [[ -f "${part}" ]] && echo "[restore] partial kept at ${part}, rerun to resume"
+        return "${rc}"
+    fi
+
+    mv -f "${part}" "${BACKUP_PATH}"
+}
+
+if [[ -z "${SKIP_DOWNLOAD:-}" ]]; then
+    download
 fi
 
 if [[ ! -f "${BACKUP_PATH}" ]]; then

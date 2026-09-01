@@ -13,10 +13,21 @@ variable, settable inline (`-e KEY=val`) or from a file (`--env-file .env`).
 curl -fsSL https://raw.githubusercontent.com/m-fadil/frappe-executable/main/install.sh | bash
 ```
 
-Drops the scripts in `/opt/frappe-executable` and links `frappe-exec` into
-`/usr/local/bin`. Uses `sudo` only if those paths are not already writable.
+Drops the scripts in `/opt/frappe-executable` and links `frappe` into `/usr/local/bin`.
 
-Rootless, into your home:
+**Do not run it as `sudo curl ... | bash`** — that elevates `curl`, not `bash`,
+which is not what you want. The script elevates itself instead: it checks
+whether the target paths are writable, and only then calls `sudo` for the
+copy and the symlink. The download and unpack always run as you. It asks for
+the password before downloading anything, so you never get a half-install,
+and if there is no terminal to ask on it tells you the two ways out instead of
+dying mid-run.
+
+If you would rather elevate the whole thing yourself, `curl ... | sudo bash`
+works — just note that `$HOME` is then root's, so the rootless overrides below
+will not do what you expect.
+
+Rootless, no `sudo` anywhere:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/m-fadil/frappe-executable/main/install.sh \
@@ -24,17 +35,36 @@ curl -fsSL https://raw.githubusercontent.com/m-fadil/frappe-executable/main/inst
 ```
 
 Pin a tag or commit with `REF=v1.0.0`, rename the command with
-`BIN_NAME=fexec`. Re-run the same line to upgrade.
+`BIN_NAME=fe`. Re-run the same line to upgrade.
+
+### Uninstall
 
 ```bash
-curl -fsSL .../install.sh | bash -s -- --uninstall   # removes the link and the scripts
+frappe uninstall
 ```
+
+Works out where it lives on its own, so a custom `INSTALL_DIR` / `BIN_DIR` /
+`BIN_NAME` needs no arguments. It removes every symlink that resolves to the
+installed entry — including ones you made by hand, and ones outside `PATH` —
+then the scripts, then the directory itself. Anything you left in there (an
+`.env`, say) is kept and reported rather than deleted, and it refuses outright
+on a directory that has no `frappe-exec.sh` in it. `sudo` only if the paths
+need it.
+
+Equivalent without an install, or if the entry is already gone:
+
+```bash
+curl -fsSL .../install.sh | bash -s -- --uninstall
+curl -fsSL .../install.sh | INSTALL_DIR=~/.local/share/frappe-executable bash -s -- --uninstall
+```
+
+Running it against a git checkout is refused — that is yours to `rm`.
 
 Or just clone it — the scripts run fine from a checkout, no install step
 required.
 
-Needs `bash`, `curl` and `tar` to install; `restore` additionally wants
-`jq` and `aria2c`.
+Needs `bash`, `curl` and `tar` to install. `restore` also needs `jq`, and
+uses `aria2c` if you have it — see below.
 
 ## The one thing to know
 
@@ -43,7 +73,7 @@ the scripts happen to be installed. So:
 
 ```bash
 cd ~/frappe-bench
-frappe-exec sanitize .env
+frappe sanitize .env
 ```
 
 Run one outside a bench and it says so instead of guessing.
@@ -52,8 +82,10 @@ Run one outside a bench and it says so instead of guessing.
 ## Commands
 
 ```
-frappe-exec                        # list commands
-frappe-exec <command> --help       # every variable it reads, with defaults
+frappe                        # list commands
+frappe <command> --help       # every variable it reads, with defaults
+frappe --version              # the ref that was installed
+frappe uninstall              # remove itself
 ```
 
 | Command | What it does |
@@ -79,18 +111,25 @@ Then a TUI to review the config before anything runs. Passwords have no
 defaults; it refuses to run until you set them.
 
 ```bash
-frappe-exec bench-init                                    # pick mode, edit in the TUI
-frappe-exec bench-init -e MODE=docker                     # skip the mode picker
-frappe-exec bench-init --env-file bench.env -e YES=1      # fully unattended
+frappe bench-init                                    # pick mode, edit in the TUI
+frappe bench-init -e MODE=docker                     # skip the mode picker
+frappe bench-init --env-file bench.env -e YES=1      # fully unattended
 ```
 
 ### restore + sanitize
 
 `restore` asks the source site for its latest backup over
-`fetch_latest_backups`, pulls it with `aria2c` (resumable, 4 connections),
-and restores + migrates + resets the admin password. An already-downloaded
-archive is reused if `gzip -t` says it is intact, so an interrupted run costs
-you nothing.
+`fetch_latest_backups`, downloads it, then restores + migrates + resets the
+admin password. An already-downloaded archive is reused if `gzip -t` says it is
+intact, so a rerun costs you nothing.
+
+The download uses `aria2c` when it is installed — 4 connections, resumable,
+tune with `RESTORE_CONNECTIONS`. Without it, it falls back to `curl`: one
+connection, still resumable. The curl path writes to `<backup>.part` and
+renames on success, so an interrupted download is picked up where it stopped
+instead of starting over, and a failed one leaves the partial behind on
+purpose. No extra install needed either way; `aria2c` is just faster on a fat
+pipe.
 
 `sanitize` is the part you do not skip. A fresh production clone will happily
 send real invoices to real customers, so it: mutes the email queue, disables
@@ -101,17 +140,17 @@ re-counting everything still enabled, so you get proof rather than a promise.
 
 ```bash
 cd ~/frappe-bench
-frappe-exec restore-sanitize .env
-frappe-exec sanitize .env -e SANITIZE_SINGLES=            # skip the singles step
+frappe restore-sanitize .env
+frappe sanitize .env -e SANITIZE_SINGLES=            # skip the singles step
 ```
 
 ### create-user
 
 ```bash
-frappe-exec create-user -e USER_EMAIL=mcp@example.com
+frappe create-user -e USER_EMAIL=mcp@example.com
 # → mcp@example.com, first name "mcp", System Manager, prints key:secret
 
-frappe-exec create-user \
+frappe create-user \
   -e USER_EMAIL=ops@example.com -e USER_FIRST_NAME=Ops -e USER_LAST_NAME=Team \
   -e USER_ROLES='Accounts User,Sales User' -e USER_API_KEY=0
 ```
@@ -136,7 +175,7 @@ argument order. Env files are plain `KEY=value`, sourced by bash, so `#`
 comments and quoting work as you would expect.
 
 ```bash
-frappe-exec restore base.env prod.env -e RESTORE_KEEP_BACKUP=0
+frappe restore base.env prod.env -e RESTORE_KEEP_BACKUP=0
 ```
 
 Start from [`.env.example`](.env.example) — one section per script, shared
@@ -152,7 +191,7 @@ restore.sh             |
 sanitize.sh            |  subcommands, also runnable directly
 restore-sanitize.sh    |
 create-user.sh        /
-install.sh            curl | bash installer
+install.sh            curl | bash installer, and the uninstaller
 test_lib.sh           asserts for the argument parser; ./test_lib.sh
 ```
 
