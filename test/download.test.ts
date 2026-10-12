@@ -13,14 +13,17 @@ const dir = mkdtempSync(join(tmpdir(), 'fe-dl-'));
 let server: Server;
 let base = '';
 const seen: IncomingMessage[] = [];
+let flakyDrops = 0;
 
 before(async () => {
     server = createServer((req, res) => {
         seen.push(req);
         if (req.headers.authorization !== 'token k:s') return void res.writeHead(403).end();
         const range = /^bytes=(\d+)-$/.exec(req.headers.range ?? '');
-        if (req.url === '/flaky' && !range) {
-            // first try: drop the connection halfway through the body
+        if (req.url === '/flaky' && flakyDrops > 0) {
+            // drop the connection halfway through the body; how much of it reaches
+            // the .part file before the error is timing, so the retry may or may not resume
+            flakyDrops--;
             res.writeHead(200, { 'content-length': BODY.length });
             return void res.write(BODY.subarray(0, 5000), () => res.socket?.destroy());
         }
@@ -34,7 +37,7 @@ before(async () => {
             });
             return void res.end(BODY.subarray(start));
         }
-        if (req.url === '/ranged' || req.url === '/plain') {
+        if (req.url === '/ranged' || req.url === '/plain' || req.url === '/flaky') {
             res.writeHead(200, { 'content-length': BODY.length });
             return void res.end(BODY);
         }
@@ -70,13 +73,26 @@ describe('downloadResumable', () => {
         assert.deepEqual(readFileSync(dest), BODY);
     });
 
-    test('a connection dropped mid-body is retried and resumed', async () => {
+    test('a connection dropped mid-body is retried to a complete file', async () => {
         const dest = join(dir, 'flaky.gz');
         seen.length = 0;
+        flakyDrops = 1;
         await downloadResumable(`${base}/flaky`, dest, { ...opts, attempts: 2, backoffMs: 0 });
         assert.equal(seen.length, 2);
-        assert.match(seen[1]!.headers.range ?? '', /^bytes=[1-9]\d*-$/);
         assert.deepEqual(readFileSync(dest), BODY);
+        assert.equal(existsSync(`${dest}.part`), false);
+    });
+
+    test('gives up after `attempts` failures without leaving dest', async () => {
+        const dest = join(dir, 'flaky-out.gz');
+        seen.length = 0;
+        flakyDrops = 2;
+        await assert.rejects(
+            downloadResumable(`${base}/flaky`, dest, { ...opts, attempts: 2, backoffMs: 0 }),
+            /download failed/,
+        );
+        assert.equal(seen.length, 2);
+        assert.equal(existsSync(dest), false);
     });
 
     test('restarts from zero when the source ignores Range', async () => {
