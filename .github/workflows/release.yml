@@ -1,0 +1,55 @@
+name: release
+
+# Bump "version" in package.json on main to publish it: the build lands as one
+# commit on the `release` branch, tagged vX.Y.Z (see .github/scripts/publish-release.sh).
+#   npx m-fadil/frappe-executable#release <command>
+#   npm i -g m-fadil/frappe-executable#vX.Y.Z
+
+on:
+  push:
+    branches: [main]
+    paths: [package.json]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # manual runs from another branch must not publish that branch's code
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: skip when this version is already released
+        id: check
+        run: |
+          tag="v$(node -p 'require("./package.json").version')"
+          rc=0
+          git ls-remote --exit-code origin "refs/tags/${tag}" >/dev/null || rc=$?
+          case "$rc" in
+            0) echo "${tag} already released"; echo "publish=false" >> "$GITHUB_OUTPUT" ;;
+            2) echo "publish=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "git ls-remote failed (exit ${rc})"; exit "$rc" ;;
+          esac
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.publish == 'true'
+        with:
+          node-version: 20
+          cache: npm
+      - if: steps.check.outputs.publish == 'true'
+        run: npm ci
+      - if: steps.check.outputs.publish == 'true'
+        run: npm run format:check
+      - if: steps.check.outputs.publish == 'true'
+        run: npm test
+      - name: publish to the release branch
+        if: steps.check.outputs.publish == 'true'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          bash .github/scripts/publish-release.sh
