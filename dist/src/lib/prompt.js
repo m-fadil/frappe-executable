@@ -1,4 +1,4 @@
-import { confirm, input, password, select, Separator } from '@inquirer/prompts';
+import { confirm, input, password, search, select, Separator } from '@inquirer/prompts';
 import { CliError } from './errors.js';
 /**
  * Prompts are drawn on stderr, like `read -p` would, so stdout stays clean for
@@ -21,6 +21,10 @@ export function promptSelect(message, choices, defaultValue) {
 }
 export function promptConfirm(message, defaultValue = true) {
     return confirm({ message, default: defaultValue }, CONTEXT);
+}
+/** Type-to-filter list; Tab copies the highlighted choice's name into the input. */
+export function promptSearch(message, source, validate) {
+    return search({ message, source: (term) => source(term ?? ''), validate, pageSize: 15 }, CONTEXT);
 }
 export { Separator };
 // --- "ask only when unset" fallbacks: -e / --env-file always win -----------

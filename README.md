@@ -86,13 +86,13 @@ frappe --version              # the installed version
 frappe uninstall              # remove itself
 ```
 
-| Command            | What it does                                                   |
-| ------------------ | -------------------------------------------------------------- |
-| `bench-init`       | Init a bench + site, `server` or `docker` layout               |
-| `restore`          | Pull the latest DB backup from a source site, restore, migrate |
-| `sanitize`         | Disable every outbound integration on a restored site          |
-| `restore-sanitize` | The two above, in that order                                   |
-| `create-user`      | Create a user, print `api_key:api_secret`                      |
+| Command            | What it does                                                              |
+| ------------------ | ------------------------------------------------------------------------- |
+| `bench-init`       | Init a bench + site, `server` or `docker` layout                          |
+| `restore`          | Restore a DB backup (latest from a source site, or a local path), migrate |
+| `sanitize`         | Disable every outbound integration on a restored site                     |
+| `restore-sanitize` | The two above, in that order                                              |
+| `create-user`      | Create a user, print `api_key:api_secret`                                 |
 
 ### bench-init
 
@@ -131,6 +131,18 @@ over, retries transient failures, and keeps the partial on a final failure on
 purpose. A source that ignores Range is simply re-downloaded. Nothing else to
 install; `aria2c` is just faster on a fat pipe.
 
+Already have the backup? Point `RESTORE_FROM` at a `.sql` / `.sql.gz` file, or
+at a directory of them, and nothing is downloaded. A directory offers its
+backups newest first (by the `YYYYMMDD_HHMMSS-` bench puts in the name, else
+the file's mtime); with no terminal the newest is taken. `RESTORE_FROM` wins
+over `RESTORE_SOURCE_URL`, and a local backup is never deleted, whatever
+`RESTORE_KEEP_BACKUP` says. With neither set, `restore` asks which source to
+use; picking "local" gives a path prompt that starts at the current directory,
+where Tab completes the highlighted entry and Enter takes it if it is a backup
+or a directory holding some (otherwise the entry is copied into the input so
+you can go deeper). `.gz` backups are checked for corruption before anything
+is dropped.
+
 `sanitize` is the part you do not skip. A fresh production clone will happily
 send real invoices to real customers, so it: mutes the email queue, disables
 every Email Account, Webhook and Notification, parks Auto Repeat, empties the
@@ -141,6 +153,7 @@ re-counting everything still enabled, so you get proof rather than a promise.
 ```bash
 cd ~/frappe-bench
 frappe restore-sanitize .env
+frappe restore-sanitize -e RESTORE_FROM=~/backups    # newest local backup, no download
 frappe sanitize .env -e SANITIZE_SINGLES=            # skip the singles step
 ```
 

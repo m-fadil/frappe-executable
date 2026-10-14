@@ -1,6 +1,6 @@
 {
   "name": "frappe-executable",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "CLI for Frappe bench chores: init a bench, restore + sanitize production clones, mint API users",
   "license": "MIT",
   "type": "module",
