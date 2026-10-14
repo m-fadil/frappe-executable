@@ -1,4 +1,4 @@
-import { confirm, input, password, select, Separator } from '@inquirer/prompts';
+import { confirm, input, password, search, select, Separator } from '@inquirer/prompts';
 import type { Env } from './env.js';
 import { CliError } from './errors.js';
 
@@ -44,6 +44,15 @@ export function promptSelect<T extends string>(
 
 export function promptConfirm(message: string, defaultValue = true): Promise<boolean> {
     return confirm({ message, default: defaultValue }, CONTEXT);
+}
+
+/** Type-to-filter list; Tab copies the highlighted choice's name into the input. */
+export function promptSearch(
+    message: string,
+    source: (term: string) => ReadonlyArray<Choice<string>>,
+    validate: (value: string) => true | string,
+): Promise<string> {
+    return search<string>({ message, source: (term) => source(term ?? ''), validate, pageSize: 15 }, CONTEXT);
 }
 
 export { Separator };
