@@ -1,55 +1,143 @@
 name: release
 
-# Bump "version" in package.json on main to publish it: the build lands as one
-# commit on the `release` branch, tagged vX.Y.Z (see .github/scripts/publish-release.sh).
-#   npx m-fadil/frappe-executable#release <command>
-#   npm i -g m-fadil/frappe-executable#vX.Y.Z
-
 on:
   push:
-    branches: [main]
-    paths: [package.json]
+    tags: ['v*.*.*']
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release
   cancel-in-progress: false
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  release:
-    # manual runs from another branch must not publish that branch's code
-    if: github.ref == 'refs/heads/main'
+  verify:
+    # Manual releases must select a version tag, never a branch.
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: skip when this version is already released
-        id: check
-        run: |
-          tag="v$(node -p 'require("./package.json").version')"
-          rc=0
-          git ls-remote --exit-code origin "refs/tags/${tag}" >/dev/null || rc=$?
-          case "$rc" in
-            0) echo "${tag} already released"; echo "publish=false" >> "$GITHUB_OUTPUT" ;;
-            2) echo "publish=true" >> "$GITHUB_OUTPUT" ;;
-            *) echo "git ls-remote failed (exit ${rc})"; exit "$rc" ;;
-          esac
-      - uses: actions/setup-node@v4
-        if: steps.check.outputs.publish == 'true'
         with:
-          node-version: 20
-          cache: npm
-      - if: steps.check.outputs.publish == 'true'
-        run: npm ci
-      - if: steps.check.outputs.publish == 'true'
-        run: npm run format:check
-      - if: steps.check.outputs.publish == 'true'
-        run: npm test
-      - name: publish to the release branch
-        if: steps.check.outputs.publish == 'true'
+          ref: ${{ github.sha }}
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: verify tag matches crate version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          bash .github/scripts/publish-release.sh
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          if [ "$RELEASE_TAG" != "v$version" ]; then
+            echo "Tag $RELEASE_TAG does not match crate version v$version" >&2
+            exit 1
+          fi
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+
+  build:
+    name: build ${{ matrix.target }}
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: install musl tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: build
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CC_aarch64_unknown_linux_musl: musl-gcc
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: smoke built binary
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          exe=target/${{ matrix.target }}/release/frappe
+          test "$("$exe" --version)" = "${TAG#v}"
+          "$exe" sanitize --help | head -1 | grep -q '^Usage: frappe sanitize '
+      - name: package
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          name="frappe-${TAG}-${TARGET}"
+          mkdir "$name"
+          cp "target/${TARGET}/release/frappe" "$name/"
+          cp README.md .env.example "$name/"
+          archive="$name.tar.gz"
+          tar czf "$archive" "$name"
+          sha256sum "$archive" > "$archive.sha256"
+          echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
+          if-no-files-found: error
+
+  publish:
+    name: publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+      - name: installer with pinned default version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir baked
+          sed "s|^DEFAULT_VERSION=.*|DEFAULT_VERSION=\"$TAG\"|" install.sh > baked/install.sh
+          grep -qx "DEFAULT_VERSION=\"$TAG\"" baked/install.sh
+          chmod +x baked/install.sh
+      - name: checksums
+        run: |
+          cat frappe-*.sha256 > SHA256SUMS
+          (cd baked && sha256sum install.sh) >> SHA256SUMS
+      - name: attest provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: frappe-*.tar.gz
+      - name: create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" frappe-* baked/install.sh SHA256SUMS --clobber
+          else
+            flags=""
+            case "$TAG" in *-*) flags="--prerelease" ;; esac
+            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes $flags frappe-* baked/install.sh SHA256SUMS
+          fi

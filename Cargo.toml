@@ -1,0 +1,28 @@
+[package]
+name = "frappe-executable"
+version = "2.0.0"
+edition = "2024"
+rust-version = "1.99"
+description = "CLI for Frappe bench chores: init a bench, restore + sanitize production clones, mint API users"
+repository = "https://github.com/m-fadil/frappe-executable"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "frappe"
+path = "src/main.rs"
+
+[dependencies]
+inquire = { version = "0.7", default-features = false, features = ["crossterm"] }
+ureq = "3"
+serde_json = "1"
+flate2 = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+tempfile = "3"
+libc = "0.2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

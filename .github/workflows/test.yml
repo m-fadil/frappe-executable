@@ -5,18 +5,59 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node: [20, 22, 24]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: dtolnay/rust-toolchain@1.99.0
         with:
-          node-version: ${{ matrix.node }}
-          cache: npm
-      - run: npm ci
-      - run: npm run format:check
-      - run: npm test
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked --no-fail-fast
+
+  installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck install.sh
+      - name: pinned default version is substituted
+        run: |
+          sed 's|^DEFAULT_VERSION=.*|DEFAULT_VERSION="v9.9.9"|' install.sh > pinned.sh
+          grep -qx 'DEFAULT_VERSION="v9.9.9"' pinned.sh
+          sh -n pinned.sh
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: x86_64-unknown-linux-musl
+      - name: install musl tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: build release binary
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
+        run: cargo build --release --locked --target x86_64-unknown-linux-musl
+      - name: fake release tree
+        run: |
+          tag=v0.0.0-ci
+          target=x86_64-unknown-linux-musl
+          name="frappe-${tag}-${target}"
+          mkdir "$name" "rel/download/$tag" -p
+          cp "target/${target}/release/frappe" README.md .env.example "$name/"
+          tar czf "rel/download/$tag/$name.tar.gz" "$name"
+          (cd "rel/download/$tag" && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
+      - name: installs from the fake release and runs
+        run: |
+          FRAPPE_RELEASES_URL="file://$PWD/rel" FRAPPE_VERSION=v0.0.0-ci FRAPPE_INSTALL_DIR="$RUNNER_TEMP/bin" sh install.sh
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          test "$("$RUNNER_TEMP/bin/frappe" --version)" = "$version"
+          "$RUNNER_TEMP/bin/frappe" restore --help | head -1 | grep -q '^Usage: frappe restore '

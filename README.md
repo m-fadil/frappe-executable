@@ -6,63 +6,45 @@ dev box without spamming your customers, and minting API users.
 
 No hardcoded hosts, passwords or site names. Every knob is an environment
 variable, settable inline (`-e KEY=val`) or from a file (`--env-file .env`),
-and anything missing is asked for with arrow-key / masked prompts
-([`@inquirer/prompts`](https://www.npmjs.com/package/@inquirer/prompts)).
+and anything missing is asked for with arrow-key / masked prompts.
 
 ## Install
 
-Needs Node.js `^20.17`, `^22.13` or `>=23.5`, npm, and `git` (npm resolves the
-GitHub ref with it).
-
-Run without installing:
+A single static Linux binary (x86_64 and aarch64, musl). No Node, no runtime
+dependencies; `aria2c` is optional and only speeds up downloads.
 
 ```bash
-npx m-fadil/frappe-executable#release restore      # newest release
-npx m-fadil/frappe-executable#v1.0.0 restore       # a specific version
+curl -fsSL https://github.com/m-fadil/frappe-executable/releases/latest/download/install.sh | sh
 ```
 
-Or install globally:
+That downloads the release archive for your architecture, verifies its SHA-256
+checksum, and installs `frappe` into `~/.local/bin`. Options:
 
 ```bash
-npm install -g m-fadil/frappe-executable#release   # or #v1.0.0 to pin
+FRAPPE_VERSION=v2.0.0 sh install.sh        # a specific version (or: sh -s -- v2.0.0)
+FRAPPE_INSTALL_DIR=/usr/local/bin sh install.sh
 ```
 
-A normal global npm package: it lands in your npm prefix
-(`npm prefix -g`) with its own `node_modules`, and `frappe` goes on `PATH`
-next to every other global bin. Re-run the line to upgrade.
-
-`#release` is a branch holding only prebuilt releases, one commit per version,
-each tagged `vX.Y.Z`; nothing is compiled on your machine. `main` is the source
-and is not installable as-is.
-
-If `npm prefix -g` is root-owned (a system Node), either prefix the line with
-`sudo`, or move the prefix somewhere you own, once:
-
-```bash
-npm config set prefix ~/.npm-global      # then add ~/.npm-global/bin to PATH
-```
+Upgrade by running the installer again. Each release also publishes
+`SHA256SUMS` and a build provenance attestation.
 
 From a checkout:
 
 ```bash
-npm ci && npm pack && npm install -g ./frappe-executable-*.tgz
+cargo build --release        # -> target/release/frappe
 ```
 
-`npm install -g .` also works, but links the checkout instead of copying it,
-so `dist/` must be built (`npm run build`) and stays tied to the working tree.
-
-Upgrading from the old shell-script install (`/opt/frappe-executable`)? Run
-the old `frappe uninstall` first, so its `/usr/local/bin/frappe` link does not
-shadow the new one.
+Coming from v1 (npm)? Run the old `frappe uninstall` (or
+`npm uninstall -g frappe-executable`) first so it does not shadow the new
+binary. Commands, environment variables and exit codes are unchanged.
 
 ### Uninstall
 
 ```bash
-frappe uninstall          # = npm uninstall -g frappe-executable, in the prefix it is installed in
+frappe uninstall          # removes the running binary
 ```
 
-It finds its own prefix, so an nvm or custom-prefix install needs no
-arguments. It refuses to run from a git checkout — that is yours to `rm`.
+It refuses to run from a cargo `target/` directory — that is yours to `rm`.
 
 ## The one thing to know
 
@@ -138,9 +120,8 @@ the file's mtime); with no terminal the newest is taken. `RESTORE_FROM` wins
 over `RESTORE_SOURCE_URL`, and a local backup is never deleted, whatever
 `RESTORE_KEEP_BACKUP` says. With neither set, `restore` asks which source to
 use; picking "local" gives a path prompt that starts at the current directory,
-where Tab completes the highlighted entry and Enter takes it if it is a backup
-or a directory holding some (otherwise the entry is copied into the input so
-you can go deeper). `.gz` backups are checked for corruption before anything
+where Tab completes the highlighted entry and Enter takes the typed path if it
+is a backup or a directory holding some (otherwise it says what is wrong). `.gz` backups are checked for corruption before anything
 is dropped.
 
 `sanitize` is the part you do not skip. A fresh production clone will happily
@@ -233,42 +214,41 @@ must be quoted — unquoted whitespace is an error with the file and line, not a
 silent truncation. Nothing in the file is ever executed.
 
 Start from [`.env.example`](.env.example) — one section per command, shared
-variables grouped at the top. It ships in the package too:
-`$(npm root -g)/frappe-executable/.env.example`.
+variables grouped at the top. It ships in every release archive too.
 
 ## Layout
 
 ```
-src/cli.ts                  dispatcher: frappe <command>, --version, uninstall
-src/commands/*.ts           one file per command, each exports a Command
-src/lib/env.ts              -h / -e / --env-file parsing and precedence
-src/lib/envfile.ts          the env file syntax above
-src/lib/prompt.ts           @inquirer/prompts wrappers, ask-only-when-unset
-src/lib/proc.ts             spawn helpers (bench, aria2c)
-src/lib/download.ts         resumable download, gzip integrity check
-src/lib/bench.ts            bench dir check, site listing / picking
-test/*.test.ts              node:test suites; npm test
-.github/workflows/          CI on Node 20/22/24; release on a version bump
-.github/scripts/            publish-release.sh: build → `release` branch + tag
+src/main.rs                 dispatcher: frappe <command>, --version, uninstall
+src/commands/*.rs           one file per command, each exports a COMMAND
+src/env.rs                  -h / -e / --env-file parsing and precedence
+src/envfile.rs              the env file syntax above
+src/prompt.rs               inquire wrappers, ask-only-when-unset
+src/proc.rs                 spawn helpers (bench, aria2c), SIGINT handling
+src/download.rs             resumable download, gzip integrity check
+src/backups.rs              backup listing, path completion
+src/bench.rs                bench dir check, site listing / picking
+tests/cli.rs                end-to-end CLI tests; unit tests sit beside the code
+install.sh                  release installer
+.github/workflows/          test on push/PR; release on a v*.*.* tag
 ```
 
-Adding a command is: write `src/commands/foo.ts` exporting a `Command`
-(name, one-line `desc`, `about`, `envHelp`, `run(env)`), and add it to
-`COMMANDS` in `src/cli.ts`.
+Adding a command is: write `src/commands/foo.rs` exporting a
+`pub static COMMAND: Command` (name, one-line `desc`, `about`, `env_help`,
+`run`), and add it to `COMMANDS` in `src/commands/mod.rs`.
 
-Formatting is Prettier (`.prettierrc.json`): `npm run format` to apply,
-`npm run format:check` is what CI runs.
+Checks, as CI runs them: `cargo fmt --check`,
+`cargo clippy --all-targets --locked -- -D warnings`, `cargo test --locked`.
 
-Releasing is a version bump on `main`:
+Releasing: bump `version` in `Cargo.toml` (and `Cargo.lock`), merge, then push
+the matching tag:
 
 ```bash
-npm version patch            # or minor / major; bumps package.json + lock, no commit or tag (.npmrc)
-git commit -am "release v$(node -p 'require("./package.json").version')"
-git push
+git tag v2.0.0 && git push origin v2.0.0
 ```
 
-The `release` workflow sees the new version, runs the format check and tests,
-then `.github/scripts/publish-release.sh` commits the build to the `release`
-branch (message records the source commit) and tags it `vX.Y.Z`. Do not tag
-yourself: tags belong to release commits, and pushing a version that is already
-tagged is a no-op. The workflow can also be re-run by hand from the Actions tab.
+The `release` workflow checks the tag equals the crate version, runs fmt,
+clippy and tests, builds both musl targets, and publishes the archives,
+checksums, provenance and `install.sh` to a GitHub release (a tag containing
+`-` is a prerelease). It can also be re-run by hand from the Actions tab on a
+tag.
