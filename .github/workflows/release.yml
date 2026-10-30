@@ -49,7 +49,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-24.04 }
           - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm }
     steps:
       - uses: actions/checkout@v4
@@ -61,6 +61,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      # Pinned: ubuntu-26.04 ships an amd64v3 musl-tools, so the C code in ring
+      # (x25519 etc.) gets compiled with AVX2 and SIGILLs on baseline x86-64.
       - name: install musl tools
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: build
