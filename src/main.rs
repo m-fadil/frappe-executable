@@ -8,6 +8,7 @@ mod envfile;
 mod errors;
 mod proc;
 mod prompt;
+mod update;
 
 use command::{Command, PROG, help_text};
 use commands::COMMANDS;
@@ -26,8 +27,9 @@ fn usage() -> String {
     lines.extend([
         String::new(),
         "Self:".into(),
+        row("update", "Update to the latest release (--check to only look)"),
         row("uninstall", "Remove this binary"),
-        row("--version", "Show the installed version"),
+        row("--version, -v", "Show the installed version"),
         String::new(),
         "Every command accepts -h/--help, -e VAR=val and --env-file PATH.".into(),
         format!("Run \"{PROG} <command> --help\" for its variables."),
@@ -38,18 +40,24 @@ fn usage() -> String {
     lines.join("\n")
 }
 
-/// Remove the running binary. A cargo build artifact is never removed.
-fn uninstall() -> Result<()> {
+/// Path of the running install. A cargo build artifact is not an install.
+fn installed_exe(action: &str) -> Result<std::path::PathBuf> {
     let exe = std::fs::canonicalize(std::env::current_exe()?)?;
     let in_target = exe.ancestors().skip(1).any(|a| {
         a.file_name().is_some_and(|n| n == "target") && a.parent().is_some_and(|p| p.join("Cargo.toml").is_file())
     });
     if in_target {
         return Err(CliError::new(format!(
-            "{} is a cargo build artifact, not an install — delete it with rm instead",
+            "{} is a cargo build artifact, not an install — {action}",
             exe.display()
         )));
     }
+    Ok(exe)
+}
+
+/// Remove the running binary.
+fn uninstall() -> Result<()> {
+    let exe = installed_exe("delete it with rm instead")?;
     let dir = exe.parent().map(|p| p.display().to_string()).unwrap_or_default();
     std::fs::remove_file(&exe).map_err(|e| {
         CliError::new(format!(
@@ -71,10 +79,11 @@ fn real_main(argv: Vec<String>) -> Result<u8> {
             print!("{}", usage());
             return Ok(0);
         }
-        Some("--version" | "-V") => {
+        Some("--version" | "-V" | "-v") => {
             println!("{}", env!("CARGO_PKG_VERSION"));
             return Ok(0);
         }
+        Some("update") => return update::run(rest, || installed_exe("rebuild it with cargo instead")),
         Some("uninstall") => {
             uninstall()?;
             return Ok(0);

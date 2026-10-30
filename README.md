@@ -38,6 +38,18 @@ Coming from v1 (npm)? Run the old `frappe uninstall` (or
 `npm uninstall -g frappe-executable`) first so it does not shadow the new
 binary. Commands, environment variables and exit codes are unchanged.
 
+### Update
+
+```bash
+frappe update             # latest stable release
+frappe update --check     # only say whether one exists
+frappe update v2.0.1      # a specific version (also a downgrade)
+```
+
+It runs that release's `install.sh`, so the SHA-256 check and the in-place
+replace are the same as a fresh install. Needs `sh` and `curl` or `wget`.
+It refuses to run from a cargo `target/` directory.
+
 ### Uninstall
 
 ```bash
@@ -64,7 +76,8 @@ Run one outside a bench and it says so instead of guessing.
 ```
 frappe                        # list commands
 frappe <command> --help       # every variable it reads, with defaults
-frappe --version              # the installed version
+frappe --version, -v          # the installed version
+frappe update                 # update to the latest release
 frappe uninstall              # remove itself
 ```
 
@@ -219,7 +232,7 @@ variables grouped at the top. It ships in every release archive too.
 ## Layout
 
 ```
-src/main.rs                 dispatcher: frappe <command>, --version, uninstall
+src/main.rs                 dispatcher: frappe <command>, --version, update, uninstall
 src/commands/*.rs           one file per command, each exports a COMMAND
 src/env.rs                  -h / -e / --env-file parsing and precedence
 src/envfile.rs              the env file syntax above
