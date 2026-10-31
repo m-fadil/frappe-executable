@@ -1,6 +1,6 @@
 [package]
 name = "frappe-executable"
-version = "2.1.0"
+version = "2.1.1"
 edition = "2024"
 rust-version = "1.99"
 description = "CLI for Frappe bench chores: init a bench, restore + sanitize production clones, mint API users"

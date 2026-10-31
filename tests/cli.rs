@@ -107,11 +107,6 @@ fn no_terminal_fails_fast_naming_what_is_missing() {
             .contains("no tty: set YES=1")
     );
     assert!(
-        cli(&["bench-init", "-e", "MODE=server", "-e", "YES=1"], d)
-            .err
-            .contains("missing required: DB_ROOT_PASS ADMIN_PASS")
-    );
-    assert!(
         cli(&["bench-init", "-e", "MODE=k8s", "-e", "YES=1"], d)
             .err
             .contains("MODE must be 'server' or 'docker'")

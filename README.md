@@ -100,10 +100,15 @@ Asks `server` or `docker` first, because that choice changes the flags:
 - **server** — none of that. Bench generates its own redis config and
   supervisor entries, `DB_HOST=127.0.0.1`.
 
-Then it asks for the two passwords (no defaults) and shows a menu with every
-value; pick one to change it, or **Apply & run**, which confirms once more
-before anything runs. DB Name follows Site Name until you give it a value of
-its own.
+Then it asks for Bench Name (default `frappe-bench`), DB Root Password
+(Enter uses `123`) and Admin Password (Enter uses `admin`). These passwords
+are development defaults; change them for non-local deployments.
+Site Name is derived by removing the trailing `-bench` and appending
+`.localhost`: `frappe-bench` → `frappe.localhost` → DB `frappe_localhost`;
+`example-bench` → `example.localhost` → DB `example_localhost`.
+Explicit environment values take precedence. The review menu lets you edit
+every value before **Apply & run** and confirmation. Site Name follows Bench
+Name, and DB Name follows Site Name, until you give either its own value.
 
 ```bash
 frappe bench-init                                    # pick mode, edit in the menu

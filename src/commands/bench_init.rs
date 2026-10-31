@@ -70,18 +70,25 @@ fn db_name_for(site: &str) -> String {
         .collect()
 }
 
+fn site_for(bench: &str) -> String {
+    format!("{}.localhost", bench.strip_suffix("-bench").unwrap_or(bench))
+}
+
 /// Fill every unset field with its mode-specific default.
 fn apply_defaults(env: &mut Env, mode: Mode) {
-    let site = env.or("SITE_NAME", "development.localhost");
+    let bench = env.or("BENCH_NAME", "frappe-bench");
+    let site = env.or("SITE_NAME", &site_for(&bench));
     let docker = mode == Mode::Docker;
     let mut defaults: Vec<(&str, String)> = vec![
         ("FRAPPE_VERSION", "version-16".into()),
-        ("BENCH_NAME", "frappe-bench".into()),
+        ("BENCH_NAME", bench),
         ("SITE_NAME", site.clone()),
         ("DB_HOST", if docker { "mariadb" } else { "127.0.0.1" }.into()),
         ("DB_PORT", "3306".into()),
         ("DB_NAME", db_name_for(&site)),
         ("DB_ROOT_USER", "root".into()),
+        ("DB_ROOT_PASS", "123".into()),
+        ("ADMIN_PASS", "admin".into()),
     ];
     if docker {
         defaults.push(("REDIS_CACHE", "redis://redis-cache:6379".into()));
@@ -162,13 +169,19 @@ fn configure(env: &mut Env, mode: Mode, fields: &[&Field]) -> Result<bool> {
             return Ok(false);
         }
         if cursor != APPLY {
-            // DB Name tracks Site Name until it is given a value of its own
-            let follows = cursor == "SITE_NAME"
+            // Derived values follow their source until overridden independently.
+            let site_follows = cursor == "BENCH_NAME"
+                && env.get("SITE_NAME") == Some(site_for(env.get("BENCH_NAME").unwrap_or_default()).as_str());
+            let db_follows = (cursor == "SITE_NAME" || site_follows)
                 && env.get("DB_NAME") == Some(db_name_for(env.get("SITE_NAME").unwrap_or_default()).as_str());
             if let Some(field) = fields.iter().find(|f| f.key == cursor) {
                 edit_field(env, field)?;
             }
-            if follows {
+            if site_follows {
+                let site = site_for(env.get("BENCH_NAME").unwrap_or_default());
+                env.set("SITE_NAME", &site);
+            }
+            if db_follows {
                 let name = db_name_for(env.get("SITE_NAME").unwrap_or_default());
                 env.set("DB_NAME", &name);
             }
@@ -282,7 +295,24 @@ fn run_bench_init(env: &mut Env) -> Result<()> {
         }
     };
 
+    if interactive && !env.filled("BENCH_NAME") {
+        let bench = prompt_text("Bench Name", Some("frappe-bench"), true)?;
+        env.set("BENCH_NAME", &bench);
+    }
+    let ask_db_password = interactive && !env.filled("DB_ROOT_PASS");
+    let ask_admin_password = interactive && !env.filled("ADMIN_PASS");
     apply_defaults(env, mode);
+    for (ask, key, label, default) in [
+        (ask_db_password, "DB_ROOT_PASS", "DB Root Password", "123"),
+        (ask_admin_password, "ADMIN_PASS", "Admin Password", "admin"),
+    ] {
+        if ask {
+            let value = prompt_secret(&format!("{label} (default: {default})"), true)?;
+            if !value.is_empty() {
+                env.set(key, &value);
+            }
+        }
+    }
     let mut fields: Vec<&Field> = COMMON_FIELDS.iter().collect();
     if mode == Mode::Docker {
         fields.extend(DOCKER_FIELDS.iter());
@@ -314,13 +344,13 @@ pub static COMMAND: Command = Command {
   YES                     non-empty: skip the menu and run immediately
   FRAPPE_VERSION          default: version-16
   BENCH_NAME              default: frappe-bench
-  SITE_NAME               default: development.localhost
+  SITE_NAME               default: BENCH_NAME without trailing -bench, plus .localhost
   DB_HOST                 default: mariadb (docker) / 127.0.0.1 (server)
   DB_PORT                 default: 3306
   DB_NAME                 default: derived from SITE_NAME
   DB_ROOT_USER            default: root
-  DB_ROOT_PASS            required (no default)
-  ADMIN_PASS              required (no default)
+  DB_ROOT_PASS            default: 123
+  ADMIN_PASS              default: admin
   REDIS_CACHE             docker only, default: redis://redis-cache:6379
   REDIS_QUEUE             docker only, default: redis://redis-queue:6379
   REDIS_SOCKETIO          docker only, default: redis://redis-socketio:6379
@@ -332,3 +362,38 @@ redis_* global config, and creates the site with
 --mariadb-user-host-login-scope=%. Server mode does none of those.",
     run: run_bench_init,
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn derives_site_and_database_without_overriding_explicit_values() {
+        for (bench, site, db) in [
+            ("frappe-bench", "frappe.localhost", "frappe_localhost"),
+            ("example-bench", "example.localhost", "example_localhost"),
+            (
+                "my-bench-project",
+                "my-bench-project.localhost",
+                "my_bench_project_localhost",
+            ),
+        ] {
+            let mut env = Env::default();
+            env.set("BENCH_NAME", bench);
+            apply_defaults(&mut env, Mode::Docker);
+            assert_eq!(env.get("SITE_NAME"), Some(site));
+            assert_eq!(env.get("DB_NAME"), Some(db));
+        }
+        let mut env = Env::default();
+        env.set("BENCH_NAME", "example-bench");
+        env.set("SITE_NAME", "custom.test");
+        env.set("DB_NAME", "custom_db");
+        env.set("DB_ROOT_PASS", "secret");
+        env.set("ADMIN_PASS", "other");
+        apply_defaults(&mut env, Mode::Server);
+        assert_eq!(env.get("SITE_NAME"), Some("custom.test"));
+        assert_eq!(env.get("DB_NAME"), Some("custom_db"));
+        assert_eq!(env.get("DB_ROOT_PASS"), Some("secret"));
+        assert_eq!(env.get("ADMIN_PASS"), Some("other"));
+    }
+}
