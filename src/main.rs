@@ -31,8 +31,10 @@ fn usage() -> String {
         row("uninstall", "Remove this binary"),
         row("--version, -v", "Show the installed version"),
         String::new(),
-        "Every command accepts -h/--help, -e VAR=val and --env-file PATH.".into(),
-        format!("Run \"{PROG} <command> --help\" for its variables."),
+        "Every command accepts -h/--help. bench-init, restore, sanitize,".into(),
+        "restore-sanitize and create-user also accept -e VAR=val and".into(),
+        "--env-file PATH; their --help lists every variable and default.".into(),
+        format!("Run \"{PROG} <command> --help\" for details."),
         String::new(),
         "Commands act on the bench in the CURRENT directory.".into(),
         String::new(),
@@ -85,6 +87,10 @@ fn real_main(argv: Vec<String>) -> Result<u8> {
         }
         Some("update") => return update::run(rest, || installed_exe("rebuild it with cargo instead")),
         Some("uninstall") => {
+            if rest.iter().any(|a| a == "-h" || a == "--help") {
+                println!("Usage: {PROG} uninstall\n\nRemove this binary.");
+                return Ok(0);
+            }
             uninstall()?;
             return Ok(0);
         }

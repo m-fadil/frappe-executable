@@ -38,10 +38,116 @@ fn bench(root: &Path, name: &str, sites: &[&str]) -> PathBuf {
 #[test]
 fn every_command_answers_help_without_a_bench() {
     let dir = tempfile::tempdir().unwrap();
-    for c in ["bench-init", "restore", "sanitize", "restore-sanitize", "create-user"] {
+    for c in [
+        "bench-init",
+        "restore",
+        "sanitize",
+        "restore-sanitize",
+        "create-user",
+        "update",
+        "uninstall",
+    ] {
         let r = cli(&[c, "--help"], dir.path());
         assert_eq!(r.code, 0, "{c}");
-        assert!(r.out.starts_with(&format!("Usage: frappe {c} ")), "{c}: {}", r.out);
+        assert!(r.out.starts_with(&format!("Usage: frappe {c}")), "{c}: {}", r.out);
+    }
+}
+
+/// --help is the only place users can discover the overridable variables.
+#[test]
+fn help_lists_every_variable() {
+    let dir = tempfile::tempdir().unwrap();
+    let cases: &[(&str, &[&str])] = &[
+        (
+            "bench-init",
+            &[
+                "MODE",
+                "YES",
+                "FRAPPE_VERSION",
+                "BENCH_NAME",
+                "SITE_NAME",
+                "DB_HOST",
+                "DB_PORT",
+                "DB_NAME",
+                "DB_ROOT_USER",
+                "DB_ROOT_PASS",
+                "ADMIN_PASS",
+                "REDIS_CACHE",
+                "REDIS_QUEUE",
+                "REDIS_SOCKETIO",
+                "BENCH_INIT_EXTRA",
+                "BENCH_NEW_SITE_EXTRA",
+            ],
+        ),
+        (
+            "restore",
+            &[
+                "RESTORE_SITE",
+                "RESTORE_FROM",
+                "RESTORE_SOURCE_URL",
+                "RESTORE_SOURCE_TOKEN",
+                "DB_ROOT_USER",
+                "DB_ROOT_PASS",
+                "RESTORE_ADMIN_PASSWORD",
+                "RESTORE_DOWNLOAD_DIR",
+                "RESTORE_SITES_DIR",
+                "RESTORE_CONNECTIONS",
+                "RESTORE_KEEP_BACKUP",
+                "RESTORE_SKIP_MIGRATE",
+            ],
+        ),
+        (
+            "sanitize",
+            &[
+                "SANITIZE_SITE",
+                "SANITIZE_SINGLES",
+                "SANITIZE_SITES_DIR",
+                "SANITIZE_MUTE_EMAILS",
+            ],
+        ),
+        (
+            "restore-sanitize",
+            &[
+                "RESTORE_SITE",
+                "RESTORE_FROM",
+                "RESTORE_SOURCE_URL",
+                "RESTORE_SOURCE_TOKEN",
+                "DB_ROOT_USER",
+                "DB_ROOT_PASS",
+                "RESTORE_ADMIN_PASSWORD",
+                "RESTORE_DOWNLOAD_DIR",
+                "RESTORE_SITES_DIR",
+                "RESTORE_CONNECTIONS",
+                "RESTORE_KEEP_BACKUP",
+                "RESTORE_SKIP_MIGRATE",
+                "SANITIZE_SITE",
+                "SANITIZE_SINGLES",
+                "SANITIZE_SITES_DIR",
+                "SANITIZE_MUTE_EMAILS",
+            ],
+        ),
+        (
+            "create-user",
+            &[
+                "USER_SITE",
+                "USER_EMAIL",
+                "USER_FIRST_NAME",
+                "USER_LAST_NAME",
+                "USER_ROLES",
+                "USER_PASSWORD",
+                "USER_API_KEY",
+                "USER_WELCOME_EMAIL",
+                "USER_SITES_DIR",
+            ],
+        ),
+        ("update", &["FRAPPE_RELEASES_URL"]),
+    ];
+    for (cmd, vars) in cases {
+        let r = cli(&[cmd, "--help"], dir.path());
+        assert_eq!(r.code, 0, "{cmd}");
+        for v in *vars {
+            assert!(r.out.contains(v), "{cmd} --help does not mention {v}:\n{}", r.out);
+        }
     }
 }
 

@@ -209,7 +209,8 @@ RESTORE_SITE is required (2 sites here, no terminal to ask on; pass -e RESTORE_S
 
 ## Options, everywhere
 
-Same three on every command:
+Same three on `bench-init`, `restore`, `sanitize`, `restore-sanitize` and
+`create-user`:
 
 ```
 -h, --help              variables and defaults for that command

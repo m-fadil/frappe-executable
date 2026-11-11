@@ -11,8 +11,9 @@ pub struct Command {
     pub desc: &'static str,
     /// paragraph under the usage line
     pub about: &'static str,
-    /// the variables it reads, with defaults; shown by --help
-    pub env_help: &'static str,
+    /// The variables it reads, with defaults; rendered by --help.
+    /// A function so a command that wraps others can merge their lists.
+    pub env_help: fn() -> String,
     pub run: fn(&mut Env) -> Result<()>,
 }
 
@@ -24,12 +25,16 @@ pub fn help_text(cmd: &Command) -> String {
 
 Options:
   -h, --help              Show this help
-  -e VAR=val, --env       Set/override a variable (repeatable)
+  -e VAR=val, --env       Set/override a variable (repeatable; always wins)
       --env-file PATH     Load variables from an env file (repeatable)
+
+Precedence: process environment, then --env-file (in order), then -e.
 
 {}
 ",
-        cmd.name, cmd.about, cmd.env_help
+        cmd.name,
+        cmd.about,
+        (cmd.env_help)()
     )
 }
 

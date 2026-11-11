@@ -335,11 +335,8 @@ fn run_bench_init(env: &mut Env) -> Result<()> {
     run_bench(env, mode)
 }
 
-pub static COMMAND: Command = Command {
-    name: "bench-init",
-    desc: "Init a new bench + site (server or docker layout)",
-    about: "Interactive Frappe bench init: pick a layout, review every value, then run.",
-    env_help: "Variables:
+fn env_help() -> String {
+    "Variables:
   MODE                    server | docker (asked when unset)
   YES                     non-empty: skip the menu and run immediately
   FRAPPE_VERSION          default: version-16
@@ -354,12 +351,20 @@ pub static COMMAND: Command = Command {
   REDIS_CACHE             docker only, default: redis://redis-cache:6379
   REDIS_QUEUE             docker only, default: redis://redis-queue:6379
   REDIS_SOCKETIO          docker only, default: redis://redis-socketio:6379
-  BENCH_INIT_EXTRA        extra args appended to 'bench init'
-  BENCH_NEW_SITE_EXTRA    extra args appended to 'bench new-site'
+  BENCH_INIT_EXTRA        extra args appended to 'bench init', split on whitespace
+  BENCH_NEW_SITE_EXTRA    extra args appended to 'bench new-site', split on whitespace
 
 Docker mode adds --skip-redis-config-generation to 'bench init', writes the
 redis_* global config, and creates the site with
---mariadb-user-host-login-scope=%. Server mode does none of those.",
+--mariadb-user-host-login-scope=%. Server mode does none of those."
+        .to_string()
+}
+
+pub static COMMAND: Command = Command {
+    name: "bench-init",
+    desc: "Init a new bench + site (server or docker layout)",
+    about: "Interactive Frappe bench init: pick a layout, review every value, then run.",
+    env_help,
     run: run_bench_init,
 };
 

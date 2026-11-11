@@ -161,18 +161,24 @@ fn run_sanitize(env: &mut Env) -> Result<()> {
     Ok(())
 }
 
+/// The variable lines only, so `restore-sanitize --help` can merge them.
+pub const ENV_VARS: &str = "  SANITIZE_SITE           target site; falls back to RESTORE_SITE, auto-picked
+                          when the bench has one site, otherwise asked
+  SANITIZE_SINGLES        comma-separated single doctypes to disable
+                          default: FCM Settings,TP Twilio Settings,TP Exotel Settings
+                          set to empty to skip this step
+  SANITIZE_SITES_DIR      sites directory  default: sites
+  SANITIZE_MUTE_EMAILS    value written to site_config mute_emails  default: 1";
+
+fn env_help() -> String {
+    format!("Variables:\n{ENV_VARS}")
+}
+
 pub static COMMAND: Command = Command {
     name: "sanitize",
     desc: "Disable outbound integrations on a restored site",
     about: "Disable outbound integrations on a restored site so it cannot mail or call out.",
-    env_help: "Variables:
-  SANITIZE_SITE           asked; falls back to RESTORE_SITE, auto-picked when
-                          the bench has one site
-  SANITIZE_SINGLES        comma-separated single doctypes to disable
-                          default: FCM Settings,TP Twilio Settings,TP Exotel Settings
-                          set to empty to skip
-  SANITIZE_SITES_DIR      default: sites
-  SANITIZE_MUTE_EMAILS    default: 1  site_config mute_emails value",
+    env_help,
     run: run_sanitize,
 };
 

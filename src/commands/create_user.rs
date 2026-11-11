@@ -139,11 +139,8 @@ fn run_create_user(env: &mut Env) -> Result<()> {
     Ok(())
 }
 
-pub static COMMAND: Command = Command {
-    name: "create-user",
-    desc: "Create a user on a site, optionally print API credentials",
-    about: "Create (or reuse) a user on a site in the current bench.",
-    env_help: "Variables:
+fn env_help() -> String {
+    "Variables:
   USER_SITE               site name; single site is auto-picked, otherwise asked
   USER_EMAIL              required; asked when unset
   USER_FIRST_NAME         asked when unset, defaults to the email local part
@@ -151,14 +148,23 @@ pub static COMMAND: Command = Command {
   USER_ROLES              comma-separated roles, default: System Manager
                           set to empty for no extra roles
   USER_PASSWORD           optional; set only when non-empty
-  USER_API_KEY            default: 1  generate/print api_key:api_secret
-  USER_WELCOME_EMAIL      default: 0  send the welcome email
+  USER_API_KEY            default: 1; 0/empty disables generating and
+                          printing api_key:api_secret
+  USER_WELCOME_EMAIL      default: 0; 1/true/yes sends the welcome email
   USER_SITES_DIR          default: sites
 
 Examples:
   frappe create-user -e USER_EMAIL=mcp@example.com
   frappe create-user -e USER_EMAIL=ops@example.com -e USER_FIRST_NAME=Ops \\
       -e USER_ROLES='Accounts User,Sales User' -e USER_API_KEY=0
-  frappe create-user --env-file user.env",
+  frappe create-user --env-file user.env"
+        .to_string()
+}
+
+pub static COMMAND: Command = Command {
+    name: "create-user",
+    desc: "Create a user on a site, optionally print API credentials",
+    about: "Create (or reuse) a user on a site in the current bench.",
+    env_help,
     run: run_create_user,
 };

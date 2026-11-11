@@ -24,12 +24,27 @@ fn run(env: &mut Env) -> Result<()> {
     Ok(())
 }
 
+fn env_help() -> String {
+    format!(
+        "This runs restore, then sanitize, in one merged environment. Anything
+required and unset is asked for on the terminal, so no env file is needed.
+The target site is picked once for the restore step (RESTORE_SITE); the
+sanitize step uses SANITIZE_SITE when set, otherwise the same site.
+
+Restore step:
+{}
+
+Sanitize step:
+{}",
+        restore::ENV_VARS,
+        sanitize::ENV_VARS
+    )
+}
+
 pub static COMMAND: Command = Command {
     name: "restore-sanitize",
     desc: "Run restore then sanitize in one go",
     about: "Run restore then sanitize with the same options.",
-    env_help: "No env file is required: anything missing is asked for on the terminal.
-Both steps read the same variables, so see 'frappe restore --help' and
-'frappe sanitize --help'. The site is asked for once and used by both.",
+    env_help,
     run,
 };

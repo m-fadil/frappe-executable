@@ -298,29 +298,39 @@ pub fn run_restore(env: &mut Env) -> Result<()> {
     Ok(())
 }
 
+/// The variable lines only, so `restore-sanitize --help` can merge them.
+pub const ENV_VARS: &str = "  RESTORE_SITE            target site; asked, auto-picked when the bench has one site
+  RESTORE_FROM            local .sql/.sql.gz file, or a directory to pick from
+                          (newest first; no terminal: the newest). Wins over
+                          RESTORE_SOURCE_URL. Never deleted.
+  RESTORE_SOURCE_URL      source site URL; asked unless RESTORE_FROM is set
+  RESTORE_SOURCE_TOKEN    Authorization header value, e.g. 'token key:secret';
+                          asked unless RESTORE_FROM is set
+  DB_ROOT_USER            database root user; asked  default: root
+  DB_ROOT_PASS            database root password; asked (alias: DB_PASSWORD)
+  RESTORE_ADMIN_PASSWORD  admin password to set after restore; asked
+  RESTORE_DOWNLOAD_DIR    where to download the backup  default: current directory
+  RESTORE_SITES_DIR       sites directory  default: sites
+  RESTORE_CONNECTIONS     aria2c -x/-s  default: 4 (unused without aria2c)
+  RESTORE_KEEP_BACKUP     default: 1; 0 deletes a downloaded backup after restore
+  RESTORE_SKIP_MIGRATE    default: empty; non-empty skips 'bench migrate'";
+
+fn env_help() -> String {
+    format!(
+        "Anything required and unset is asked for on the terminal, so no env file is
+needed. Passwords are read without echo. With neither RESTORE_FROM nor
+RESTORE_SOURCE_URL set, you are asked which source to use.
+
+Variables:
+{ENV_VARS}"
+    )
+}
+
 pub static COMMAND: Command = Command {
     name: "restore",
     desc: "Restore the latest backup from a source site or a local path",
     about: "Restore a database backup into a local site: either the latest backup of a
 source site (downloaded) or a local .sql / .sql.gz file or directory of them.",
-    env_help: "Anything required and unset is asked for on the terminal, so no env file is
-needed. Passwords are read without echo. With neither RESTORE_FROM nor
-RESTORE_SOURCE_URL set, you are asked which source to use.
-
-Variables:
-  RESTORE_SITE            asked; auto-picked when the bench has one site
-  RESTORE_FROM            local .sql/.sql.gz file, or a directory to pick from
-                          (newest first; no terminal: the newest). Wins over
-                          RESTORE_SOURCE_URL. Never deleted.
-  RESTORE_SOURCE_URL      asked unless RESTORE_FROM is set
-  RESTORE_SOURCE_TOKEN    asked unless RESTORE_FROM is set; Authorization header value
-  DB_ROOT_USER            asked  default: root
-  DB_ROOT_PASS            asked  database root password (alias: DB_PASSWORD)
-  RESTORE_ADMIN_PASSWORD  asked  admin password to set after restore
-  RESTORE_DOWNLOAD_DIR    default: current directory
-  RESTORE_SITES_DIR       default: sites
-  RESTORE_CONNECTIONS     default: 4        aria2c -x/-s; unused without aria2c
-  RESTORE_KEEP_BACKUP     default: 1        set to 0 to delete a downloaded backup after restore
-  RESTORE_SKIP_MIGRATE    default: empty    non-empty skips 'bench migrate'",
+    env_help,
     run: run_restore,
 };
